@@ -1,0 +1,61 @@
+{
+  "name": "Webhook -> OpenAI reply draft -> Gmail draft",
+  "nodes": [
+    {
+      "parameters": { "httpMethod": "POST", "path": "support-reply", "responseMode": "responseNode", "options": {} },
+      "id": "webhook-in",
+      "name": "Inbound Message",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "model": "gpt-4o-mini",
+        "messages": {
+          "values": [
+            {
+              "content": "Draft a short, plain reply to this customer message. No greetings with exclamation marks, no hype, answer the actual question, end with one clarifying question if anything is unclear. Message: {{ $json.body.message }}\nFrom: {{ $json.body.from }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "openai-draft",
+      "name": "Draft Reply (OpenAI)",
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 1.8,
+      "position": [480, 300],
+      "credentials": { "openAiApi": { "id": "", "name": "OpenAI account" } }
+    },
+    {
+      "parameters": {
+        "operation": "createDraft",
+        "subject": "=Re: {{ $json.body.subject || 'your message' }}",
+        "emailType": "text",
+        "message": "={{ $json.message.content }}\n\n---\nDrafted by automation, reviewed by a human before sending.",
+        "options": { "sendTo": "={{ $('Inbound Message').item.json.body.from }}" }
+      },
+      "id": "gmail-draft",
+      "name": "Create Gmail Draft",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [720, 300],
+      "credentials": { "gmailOAuth2": { "id": "", "name": "Gmail account" } }
+    },
+    {
+      "parameters": { "respondWith": "json", "responseBody": "={ \"drafted\": true }" },
+      "id": "respond",
+      "name": "Respond 200",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [940, 300]
+    }
+  ],
+  "connections": {
+    "Inbound Message": { "main": [[{ "node": "Draft Reply (OpenAI)", "type": "main", "index": 0 }]] },
+    "Draft Reply (OpenAI)": { "main": [[{ "node": "Create Gmail Draft", "type": "main", "index": 0 }]] },
+    "Create Gmail Draft": { "main": [[{ "node": "Respond 200", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" }
+}

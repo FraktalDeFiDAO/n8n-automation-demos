@@ -1,0 +1,93 @@
+{
+  "name": "Lead intake -> LLM classify -> Google Sheet",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "lead-intake",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-lead",
+      "name": "Lead Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            { "id": "a1", "name": "name", "value": "={{ $json.body.name }}", "type": "string" },
+            { "id": "a2", "name": "email", "value": "={{ $json.body.email }}", "type": "string" },
+            { "id": "a3", "name": "message", "value": "={{ $json.body.message }}", "type": "string" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-fields",
+      "name": "Normalize Fields",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "model": "gpt-4o-mini",
+        "messages": {
+          "values": [
+            {
+              "content": "Classify this inbound lead for a technology services company. Return JSON with keys: category (one of: networking, voip, automation, web, other), urgency (low, medium, high), one_line_summary. Lead message: {{ $json.message }}"
+            }
+          ]
+        },
+        "options": { "responseFormat": "json_object" }
+      },
+      "id": "openai-classify",
+      "name": "Classify Lead (OpenAI)",
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 1.8,
+      "position": [680, 300],
+      "credentials": { "openAiApi": { "id": "", "name": "OpenAI account" } }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": { "value": "YOUR_SHEET_ID" },
+        "sheetName": "leads",
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "name": "={{ $('Normalize Fields').item.json.name }}",
+            "email": "={{ $('Normalize Fields').item.json.email }}",
+            "category": "={{ $json.message.content.category }}",
+            "urgency": "={{ $json.message.content.urgency }}",
+            "summary": "={{ $json.message.content.one_line_summary }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "sheet-append",
+      "name": "Append to Google Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [900, 300],
+      "credentials": { "googleSheetsOAuth2Api": { "id": "", "name": "Google Sheets account" } }
+    },
+    {
+      "parameters": { "respondWith": "json", "responseBody": "={ \"ok\": true }" },
+      "id": "respond",
+      "name": "Respond 200",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1120, 300]
+    }
+  ],
+  "connections": {
+    "Lead Webhook": { "main": [[{ "node": "Normalize Fields", "type": "main", "index": 0 }]] },
+    "Normalize Fields": { "main": [[{ "node": "Classify Lead (OpenAI)", "type": "main", "index": 0 }]] },
+    "Classify Lead (OpenAI)": { "main": [[{ "node": "Append to Google Sheet", "type": "main", "index": 0 }]] },
+    "Append to Google Sheet": { "main": [[{ "node": "Respond 200", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" }
+}

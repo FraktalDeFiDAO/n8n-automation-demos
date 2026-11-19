@@ -1,0 +1,57 @@
+{
+  "name": "Scheduled Postgres report -> email",
+  "nodes": [
+    {
+      "parameters": { "rule": { "interval": [{ "field": "cronExpression", "expression": "0 8 * * 1" }] } },
+      "id": "schedule",
+      "name": "Monday 08:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT date_trunc('day', created_at) AS day, count(*) AS jobs, sum(amount_usd) AS revenue FROM jobs WHERE created_at >= now() - interval '7 days' GROUP BY 1 ORDER BY 1;",
+        "options": {}
+      },
+      "id": "pg-query",
+      "name": "Query Weekly Numbers",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [480, 300],
+      "credentials": { "postgres": { "id": "", "name": "Postgres account" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = $input.all().map(i => i.json);\nconst lines = rows.map(r => `${r.day.toString().slice(0,10)}  jobs=${r.jobs}  revenue=$${r.revenue}`);\nconst total = rows.reduce((s, r) => s + Number(r.revenue || 0), 0);\nreturn [{ json: { text: 'Weekly report\\n\\n' + lines.join('\\n') + `\\n\\nTotal revenue: $${total}` } }];"
+      },
+      "id": "format",
+      "name": "Format Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [700, 300]
+    },
+    {
+      "parameters": {
+        "sendTo": "owner@example.com",
+        "subject": "Weekly report",
+        "emailType": "text",
+        "message": "={{ $json.text }}",
+        "options": {}
+      },
+      "id": "send-email",
+      "name": "Send Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [920, 300],
+      "credentials": { "smtp": { "id": "", "name": "SMTP account" } }
+    }
+  ],
+  "connections": {
+    "Monday 08:00": { "main": [[{ "node": "Query Weekly Numbers", "type": "main", "index": 0 }]] },
+    "Query Weekly Numbers": { "main": [[{ "node": "Format Report", "type": "main", "index": 0 }]] },
+    "Format Report": { "main": [[{ "node": "Send Email", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" }
+}
